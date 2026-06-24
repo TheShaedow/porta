@@ -166,7 +166,7 @@ function updateLatencyUI(){
   const sl=$('latencyOffset'); if(sl) sl.value=latencyManualMs;
   const cb=$('autoLatency'); if(cb) cb.checked=latencyAuto;
 }
-function compensatedStartPos(pos){ return Math.max(0, pos - estimatedLatencyMs()/1000); }
+function compensatedStartPos(pos){ return pos - estimatedLatencyMs()/1000; }
 async function calibrateLatency(){
   await ensureMic(); await ensureAudio(); await ctx.resume();
   show('Kalibrierung startet: Verbinde kurz einen Ausgang deines Interfaces mit dem für Track 1 gewählten Eingang. Es wird ein kurzer Klick abgespielt und gemessen.');
@@ -266,7 +266,9 @@ function makeTrackRecorder(t){
     if(!blob.size) return;
     const arr=await blob.arrayBuffer();
     const newBuf=await ctx.decodeAudioData(arr);
-    t.buffer=mergeAt(t.buffer,newBuf,compensatedStartPos(startPos));
+    const compPos=compensatedStartPos(startPos);
+    t.buffer=mergeAt(t.buffer,newBuf,compPos);
+    $('saveStatus').textContent='Overdub kompensiert: '+estimatedLatencyMs().toFixed(1)+' ms'; $('saveStatus').classList.add('on');
     renderMixer(); autosaveSoon();
   };
   return mr;
@@ -279,7 +281,24 @@ async function startRec(){
   armed.forEach(t=>{ try{ makeTrackRecorder(t).start(1000); }catch(e){ show('Aufnahme von Input '+((t.inputChannel||0)+1)+' konnte nicht gestartet werden: '+e.message); } });
 }
 function stopRec(){ recording=false; tracks.forEach(t=>{ if(t.mediaRecorder && t.mediaRecorder.state!=='inactive') t.mediaRecorder.stop(); t.mediaRecorder=null; }); setMode(playing?'PLAY':'STOP'); }
-function mergeAt(oldBuf,newBuf,pos){ const sr=ctx.sampleRate, ch=2, start=Math.floor(pos*sr), len=Math.max(oldBuf?oldBuf.length:0,start+newBuf.length); const out=ctx.createBuffer(ch,len,sr); for(let c=0;c<ch;c++){ const od=out.getChannelData(c); if(oldBuf) od.set(oldBuf.getChannelData(Math.min(c,oldBuf.numberOfChannels-1))); const nd=newBuf.getChannelData(Math.min(c,newBuf.numberOfChannels-1)); for(let i=0;i<nd.length;i++) od[start+i]+=nd[i]; } return out; }
+function mergeAt(oldBuf,newBuf,pos){
+  const sr=ctx.sampleRate, ch=2;
+  // pos darf negativ sein. Das ist wichtig bei Overdubs ab 00:00:
+  // statt auf 0 zu clampen, wird der Anfang des neuen Buffers abgeschnitten.
+  const rawStart=Math.round(pos*sr);
+  const destStart=Math.max(0,rawStart);
+  const srcStart=Math.max(0,-rawStart);
+  const copyLen=Math.max(0,newBuf.length-srcStart);
+  const len=Math.max(oldBuf?oldBuf.length:0,destStart+copyLen);
+  const out=ctx.createBuffer(ch,Math.max(1,len),sr);
+  for(let c=0;c<ch;c++){
+    const od=out.getChannelData(c);
+    if(oldBuf) od.set(oldBuf.getChannelData(Math.min(c,oldBuf.numberOfChannels-1)));
+    const nd=newBuf.getChannelData(Math.min(c,newBuf.numberOfChannels-1));
+    for(let i=0;i<copyLen;i++) od[destStart+i]+=nd[srcStart+i];
+  }
+  return out;
+}
 function rewind(){ offset=Math.max(0,nowPos()-5); if(playing){stop();play();} updateTime(); }
 function ff(){ offset=nowPos()+5; if(playing){stop();play();} updateTime(); }
 function updateTime(){ const p=nowPos(); const m=Math.floor(p/60), s=(p%60).toFixed(1).padStart(4,'0'); $('time').textContent=String(m).padStart(2,'0')+':'+s; }
