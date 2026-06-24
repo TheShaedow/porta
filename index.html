@@ -61,11 +61,11 @@
             <div class="setup-title">Audio Setup / Latenzkompensation</div>
             <label class="checkrow"><input id="autoLatency" type="checkbox" checked> Auto</label>
             <div class="readout" id="latencyReadout">0.0 ms</div>
-            <div class="row"><label>Manual Offset / Overdub Shift</label><input id="latencyOffset" type="range" min="-500" max="500" step="0.1" value="0"></div>
+            <div class="row"><label>Manual Offset (+ = früher / gegen zu späte Overdubs)</label><input id="latencyOffset" type="range" min="-500" max="500" step="0.1" value="0"></div>
             <div class="readout" id="manualLatencyReadout">+0.0 ms</div>
             <button class="small-btn" id="calibrateLatency">Calibrate</button>
             <button class="small-btn" id="resetLatency">Reset</button>
-            <div class="smallnote">Overdubs werden beim Einfügen um diesen Wert vorgezogen. Ist der Overdub zu spät: Manual Offset nach rechts (+). Ist er zu früh: nach links (-). Für Kalibrierung: Ausgang des Interfaces kurz auf Input 1 routen/patchen.</div>
+            <div class="smallnote">Overdubs werden beim Einfügen automatisch um diesen Wert vorgezogen. Für exakte Kalibrierung: Ausgang des Interfaces kurz auf einen Eingang routen/patchen, dann Calibrate drücken.</div>
           </div>
           <div class="row wide"><label>Master Volume</label><input id="masterVol" type="range" min="0" max="1.2" step="0.01" value="0.9"></div>
         </div>
@@ -169,40 +169,32 @@ function updateLatencyUI(){
 function compensatedStartPos(pos){ return Math.max(0, pos - estimatedLatencyMs()/1000); }
 async function calibrateLatency(){
   await ensureMic(); await ensureAudio(); await ctx.resume();
-  show('Kalibrierung: Verbinde kurz einen Ausgang deines Interfaces mit Input 1. Es wird ein kurzer Klick abgespielt und direkt im WebAudio-Pfad gemessen. Werte über 500 ms werden verworfen.');
+  show('Kalibrierung startet: Verbinde kurz einen Ausgang deines Interfaces mit dem für Track 1 gewählten Eingang. Es wird ein kurzer Klick abgespielt und gemessen.');
   const ch=Math.max(0,Math.min(7,+tracks[0].inputChannel||0));
-  const chunks=[];
-  const proc=ctx.createScriptProcessor(2048,1,1);
-  const sink=ctx.createGain(); sink.gain.value=0;
-  let armed=false;
-  proc.onaudioprocess=e=>{ if(armed) chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
-  try{ micSplitter.connect(proc,ch,0); proc.connect(sink).connect(ctx.destination); }catch(e){ show('Kalibrierung konnte Input '+(ch+1)+' nicht öffnen: '+e.message); return; }
-  const clickDelay=.35;
-  armed=true;
+  const dest=ctx.createMediaStreamDestination();
+  try{ micSplitter.connect(dest,ch,0); }catch(e){ show('Kalibrierung konnte Input '+(ch+1)+' nicht öffnen: '+e.message); return; }
+  const chunks=[]; const mr=new MediaRecorder(dest.stream);
+  mr.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
+  const clickDelay=.25, recStarted=ctx.currentTime;
+  mr.start(100);
   const osc=ctx.createOscillator(), g=ctx.createGain();
-  osc.frequency.value=1800;
-  g.gain.setValueAtTime(0,ctx.currentTime);
-  g.gain.setValueAtTime(0.9,ctx.currentTime+clickDelay);
-  g.gain.exponentialRampToValueAtTime(.0001,ctx.currentTime+clickDelay+.012);
-  osc.connect(g).connect(ctx.destination);
-  osc.start(ctx.currentTime+clickDelay); osc.stop(ctx.currentTime+clickDelay+.03);
+  osc.frequency.value=1200; g.gain.setValueAtTime(0,ctx.currentTime);
+  g.gain.setValueAtTime(1,ctx.currentTime+clickDelay);
+  g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+clickDelay+.018);
+  osc.connect(g).connect(ctx.destination); osc.start(ctx.currentTime+clickDelay); osc.stop(ctx.currentTime+clickDelay+.03);
   await new Promise(r=>setTimeout(r,1200));
-  armed=false;
-  try{ micSplitter.disconnect(proc,ch,0); proc.disconnect(); sink.disconnect(); }catch{}
-  const total=chunks.reduce((n,a)=>n+a.length,0);
-  if(!total){ show('Keine Kalibrierdaten aufgenommen.'); return; }
-  const d=new Float32Array(total); let p=0; chunks.forEach(a=>{d.set(a,p);p+=a.length;});
-  // Suche ersten deutlichen Transienten nach dem Klickzeitpunkt statt irgendeinen Peak/Störimpuls.
-  const sr=ctx.sampleRate, start=Math.floor((clickDelay-0.05)*sr), end=Math.min(d.length, Math.floor((clickDelay+0.8)*sr));
-  let noiseFloor=0; for(let i=0;i<Math.min(start, Math.floor(.25*sr));i++) noiseFloor+=Math.abs(d[i]); noiseFloor/=Math.max(1,Math.min(start,Math.floor(.25*sr)));
-  const threshold=Math.max(0.025, noiseFloor*8);
-  let idx=-1;
-  for(let i=Math.max(0,start); i<end; i++){ if(Math.abs(d[i])>=threshold){ idx=i; break; } }
-  if(idx<0){ show('Kalibrierung: Kein deutlicher Klick erkannt. Prüfe Loopback/Direct-Mix-Routing oder stelle Input 1 lauter.'); return; }
-  const measured=(idx/sr - clickDelay)*1000;
-  if(measured<0 || measured>500){ show('Kalibrierung verworfen: '+measured.toFixed(1)+' ms ist unplausibel. Nutze vorerst Manual Offset: Overdub zu spät = Regler nach rechts.'); return; }
+  mr.stop();
+  await new Promise(r=>mr.onstop=r);
+  try{ micSplitter.disconnect(dest,ch,0); }catch{}
+  const blob=new Blob(chunks,{type:'audio/webm'}); if(!blob.size){show('Keine Kalibrierdaten aufgenommen.');return;}
+  const buf=await ctx.decodeAudioData(await blob.arrayBuffer());
+  const d=buf.getChannelData(0); let peak=0, idx=0;
+  for(let i=0;i<d.length;i++){ const a=Math.abs(d[i]); if(a>peak){peak=a; idx=i;} }
+  if(peak<0.03){ show('Kalibrierung: Kein deutlicher Klick erkannt. Prüfe Loopback/Direct-Mix-Routing.'); return; }
+  const measured=(idx/buf.sampleRate - clickDelay)*1000;
+  if(measured < 0 || measured > 500){ show('Kalibrierung unplausibel: '+measured.toFixed(1)+' ms. Bitte Loopback prüfen oder Manual Offset benutzen.'); return; }
   calibratedLatencyMs=measured; latencyAuto=true; updateLatencyUI(); autosaveSoon();
-  show('Kalibrierung gespeichert: '+calibratedLatencyMs.toFixed(1)+' ms. Wenn der Overdub noch zu spät ist, Manual Offset zusätzlich nach rechts erhöhen.');
+  show('Kalibrierung gespeichert: '+calibratedLatencyMs.toFixed(1)+' ms. Neue Overdubs werden entsprechend vorgezogen.');
 }
 
 function nowPos(){ return playing? offset+(ctx.currentTime-startAt):offset; }
@@ -249,49 +241,35 @@ function rebuildMasterChain(){
 function masterNode(){ if(!masterGain){ masterGain=ctx.createGain(); analyser=ctx.createAnalyser(); analyser.fftSize=256; $('masterVol').oninput=e=>masterGain.gain.value=+e.target.value; masterGain.gain.value=+$('masterVol').value; rebuildMasterChain(); } return masterGain; }
 function play(){ ensureAudio().then(()=>{ if(playing) return; ctx.resume(); startAt=ctx.currentTime; tracks.forEach(t=>connectTrack(t,ctx.currentTime+.02,offset)); playing=true; setMode(recording?'REC+PLAY':'PLAY'); meters(); }); }
 function stop(){ const pos=nowPos(); tracks.forEach(t=>{try{t.src&&t.src.stop()}catch{} t.src=null; t.playGain=null; t.playPan=null}); if(playing) offset=pos; playing=false; if(recording) stopRec(); setMode('STOP'); cancelAnimationFrame(raf); }
-function floatChunksToBuffer(chunks){
-  const total=chunks.reduce((n,a)=>n+a.length,0);
-  const mono=new Float32Array(total);
-  let p=0;
-  chunks.forEach(a=>{ mono.set(a,p); p+=a.length; });
-  const b=ctx.createBuffer(2,total,ctx.sampleRate);
-  b.getChannelData(0).set(mono);
-  b.getChannelData(1).set(mono);
-  return b;
-}
-function makeWebAudioRecorder(t){
+function makeTrackRecorder(t){
+  const dest=ctx.createMediaStreamDestination();
   const ch=Math.max(0,Math.min(7,+t.inputChannel||0));
-  const proc=ctx.createScriptProcessor(4096,1,1);
-  const sink=ctx.createGain(); sink.gain.value=0;
-  const chunks=[];
-  const state={state:'inactive'};
-  let started=false;
-  proc.onaudioprocess=e=>{
-    if(!started || state.state!=='recording') return;
-    chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-  };
-  state.start=()=>{
-    state.state='recording'; started=true;
-    try{ micSplitter.connect(proc,ch,0); }catch(e){ state.state='inactive'; throw e; }
-    proc.connect(sink).connect(ctx.destination);
-  };
-  state.stop=()=>{
-    if(state.state==='inactive') return;
-    state.state='inactive';
+  // Der gewählte Hardware-Kanal wird separat auf diesen Track geroutet.
+  micSplitter.connect(dest, ch, 0);
+  const keepAlive=ctx.createConstantSource();
+  const silent=ctx.createGain();
+  silent.gain.value=0;
+  keepAlive.connect(silent).connect(dest);
+  keepAlive.start();
+  t.chunks=[]; t.recNodes={dest, ch, keepAlive, silent, startPos:recStartPos};
+  let opts={};
+  if(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) opts.mimeType='audio/webm;codecs=opus';
+  const mr=new MediaRecorder(dest.stream, opts); t.mediaRecorder=mr;
+  mr.ondataavailable=e=>{ if(e.data&&e.data.size) t.chunks.push(e.data); };
+  mr.onstop=async()=>{
+    const chunks=t.chunks.slice();
     const startPos=t.recNodes?.startPos ?? recStartPos;
-    try{ micSplitter.disconnect(proc,ch,0); }catch{}
-    try{ proc.disconnect(); sink.disconnect(); }catch{}
+    try{ micSplitter.disconnect(dest, ch, 0); }catch{}
+    try{ keepAlive.stop(); keepAlive.disconnect(); silent.disconnect(); }catch{}
     t.recNodes=null;
-    const newBuf=floatChunksToBuffer(chunks);
+    const blob=new Blob(chunks,{type:opts.mimeType||'audio/webm'});
+    if(!blob.size) return;
+    const arr=await blob.arrayBuffer();
+    const newBuf=await ctx.decodeAudioData(arr);
     t.buffer=mergeAt(t.buffer,newBuf,compensatedStartPos(startPos));
     renderMixer(); autosaveSoon();
   };
-  t.recNodes={ch, proc, sink, startPos:recStartPos};
-  return state;
-}
-function makeTrackRecorder(t){
-  // WebAudio-Recorder statt MediaRecorder: vermeidet WebM/Opus-Encoder-Latenz und Drift.
-  return makeWebAudioRecorder(t);
+  return mr;
 }
 async function startRec(){
   await ensureMic(); await ensureAudio();
