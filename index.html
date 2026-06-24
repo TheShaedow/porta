@@ -79,7 +79,7 @@
 'use strict';
 const N=4, DB='portastudio-v1';
 let ctx, micStream, micSource, monitor=false, noise=false, playing=false, recording=false, startAt=0, offset=0, raf, selectedInputId='default';
-let micSplitter=null, monitorGain=null;
+let micSplitter=null, monitorGain=null, recStartPos=0;
 const tracks = Array.from({length:N},(_,i)=>({name:'Track '+(i+1), buffer:null, gain:.85, pan:0, mute:false, solo:false, armed:i===0, inputChannel:i, src:null, meter:0, chunks:[], mediaRecorder:null, recNodes:null}));
 const $=id=>document.getElementById(id); const mixer=$('mixer');
 function show(msg){ $('helpText').textContent=msg; $('help').showModal(); }
@@ -137,23 +137,34 @@ function connectTrack(t, when, pos){ if(!t.buffer) return; const src=ctx.createB
 let masterGain, analyser;
 function masterNode(){ if(!masterGain){ masterGain=ctx.createGain(); analyser=ctx.createAnalyser(); analyser.fftSize=256; masterGain.connect(analyser).connect(ctx.destination); $('masterVol').oninput=e=>masterGain.gain.value=+e.target.value; masterGain.gain.value=+$('masterVol').value; } return masterGain; }
 function play(){ ensureAudio().then(()=>{ if(playing) return; ctx.resume(); startAt=ctx.currentTime; tracks.forEach(t=>connectTrack(t,ctx.currentTime+.02,offset)); playing=true; setMode(recording?'REC+PLAY':'PLAY'); meters(); }); }
-function stop(){ tracks.forEach(t=>{try{t.src&&t.src.stop()}catch{} t.src=null}); if(playing) offset=nowPos(); playing=false; if(recording) stopRec(); setMode('STOP'); cancelAnimationFrame(raf); }
+function stop(){ const pos=nowPos(); tracks.forEach(t=>{try{t.src&&t.src.stop()}catch{} t.src=null}); if(playing) offset=pos; playing=false; if(recording) stopRec(); setMode('STOP'); cancelAnimationFrame(raf); }
 function makeTrackRecorder(t){
   const dest=ctx.createMediaStreamDestination();
   const ch=Math.max(0,Math.min(7,+t.inputChannel||0));
   // Der gewählte Hardware-Kanal wird separat auf diesen Track geroutet.
   micSplitter.connect(dest, ch, 0);
-  t.chunks=[]; t.recNodes={dest, ch};
-  const mr=new MediaRecorder(dest.stream); t.mediaRecorder=mr;
-  mr.ondataavailable=e=>{ if(e.data.size) t.chunks.push(e.data); };
+  const keepAlive=ctx.createConstantSource();
+  const silent=ctx.createGain();
+  silent.gain.value=0;
+  keepAlive.connect(silent).connect(dest);
+  keepAlive.start();
+  t.chunks=[]; t.recNodes={dest, ch, keepAlive, silent, startPos:recStartPos};
+  let opts={};
+  if(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) opts.mimeType='audio/webm;codecs=opus';
+  const mr=new MediaRecorder(dest.stream, opts); t.mediaRecorder=mr;
+  mr.ondataavailable=e=>{ if(e.data&&e.data.size) t.chunks.push(e.data); };
   mr.onstop=async()=>{
+    const chunks=t.chunks.slice();
+    const startPos=t.recNodes?.startPos ?? recStartPos;
     try{ micSplitter.disconnect(dest, ch, 0); }catch{}
-    const blob=new Blob(t.chunks,{type:'audio/webm'});
+    try{ keepAlive.stop(); keepAlive.disconnect(); silent.disconnect(); }catch{}
+    t.recNodes=null;
+    const blob=new Blob(chunks,{type:opts.mimeType||'audio/webm'});
     if(!blob.size) return;
     const arr=await blob.arrayBuffer();
     const newBuf=await ctx.decodeAudioData(arr);
-    t.buffer=mergeAt(t.buffer,newBuf,offset);
-    t.recNodes=null; renderMixer(); autosaveSoon();
+    t.buffer=mergeAt(t.buffer,newBuf,startPos);
+    renderMixer(); autosaveSoon();
   };
   return mr;
 }
@@ -161,8 +172,8 @@ async function startRec(){
   await ensureMic(); await ensureAudio();
   const armed=tracks.filter(t=>t.armed);
   if(!armed.length){show('Bitte mindestens einen Track mit REC bewaffnen.');return;}
-  play(); recording=true; setMode('REC+PLAY');
-  armed.forEach(t=>{ try{ makeTrackRecorder(t).start(); }catch(e){ show('Aufnahme von Input '+((t.inputChannel||0)+1)+' konnte nicht gestartet werden: '+e.message); } });
+  recStartPos=nowPos(); play(); recording=true; setMode('REC+PLAY');
+  armed.forEach(t=>{ try{ makeTrackRecorder(t).start(1000); }catch(e){ show('Aufnahme von Input '+((t.inputChannel||0)+1)+' konnte nicht gestartet werden: '+e.message); } });
 }
 function stopRec(){ recording=false; tracks.forEach(t=>{ if(t.mediaRecorder && t.mediaRecorder.state!=='inactive') t.mediaRecorder.stop(); t.mediaRecorder=null; }); setMode(playing?'PLAY':'STOP'); }
 function mergeAt(oldBuf,newBuf,pos){ const sr=ctx.sampleRate, ch=2, start=Math.floor(pos*sr), len=Math.max(oldBuf?oldBuf.length:0,start+newBuf.length); const out=ctx.createBuffer(ch,len,sr); for(let c=0;c<ch;c++){ const od=out.getChannelData(c); if(oldBuf) od.set(oldBuf.getChannelData(Math.min(c,oldBuf.numberOfChannels-1))); const nd=newBuf.getChannelData(Math.min(c,newBuf.numberOfChannels-1)); for(let i=0;i<nd.length;i++) od[start+i]+=nd[i]; } return out; }
@@ -179,7 +190,7 @@ async function save(){ await ensureAudio(); const data={selectedInputId,tracks:a
 let saveTimer; function autosaveSoon(){ $('saveStatus').textContent='Änderungen...'; clearTimeout(saveTimer); saveTimer=setTimeout(save,900); }
 function blobToDataURL(blob){ return new Promise(r=>{const fr=new FileReader(); fr.onload=()=>r(fr.result); fr.readAsDataURL(blob);}); }
 async function load(){ const raw=localStorage.getItem(DB); if(!raw) return; await ensureAudio(); const data=JSON.parse(raw); if(data.selectedInputId) selectedInputId=data.selectedInputId; for(let i=0;i<N;i++){ if(!data.tracks?.[i]) continue; Object.assign(tracks[i],data.tracks[i]); if(tracks[i].inputChannel===undefined) tracks[i].inputChannel=i; if(data.tracks[i].wav){ const arr=await (await fetch(data.tracks[i].wav)).arrayBuffer(); tracks[i].buffer=await ctx.decodeAudioData(arr); } } renderMixer(); }
-$('play').onclick=play; $('stop').onclick=()=>{stop();offset=0;updateTime();}; $('rec').onclick=startRec; $('rew').onclick=rewind; $('ff').onclick=ff; $('save').onclick=save; $('export').onclick=exportMix; $('refreshInputs').onclick=refreshInputDevices;
+$('play').onclick=play; $('stop').onclick=()=>{stop();updateTime();}; $('rec').onclick=startRec; $('rew').onclick=rewind; $('ff').onclick=ff; $('save').onclick=save; $('export').onclick=exportMix; $('refreshInputs').onclick=refreshInputDevices;
 $('inputDevice').onchange=()=>{ selectedInputId=$('inputDevice').value; const wasMonitor=monitor; if(monitor&&monitorGain){try{monitorGain.disconnect()}catch{}} closeMic(); if(wasMonitor){ ensureMic().then(()=>startMonitor()).catch(e=>show('Audiointerface konnte nicht geöffnet werden: '+e.message)); } autosaveSoon(); };
 function startMonitor(){ if(!micSplitter) return; monitorGain=ctx.createGain(); monitorGain.gain.value=.8; for(let c=0;c<8;c++){ try{ micSplitter.connect(monitorGain,c,0); }catch{} } monitorGain.connect(masterNode()); }
 function stopMonitor(){ if(monitorGain){ try{monitorGain.disconnect()}catch{} monitorGain=null; } }
