@@ -35,6 +35,45 @@
   dialog{border:1px solid var(--line);border-radius:18px;background:#24211d;color:var(--ink);max-width:680px}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}a{color:#ffd09a}
   @media (max-width: 900px){.top{grid-template-columns:1fr}.mixer{grid-template-columns:repeat(4,minmax(250px,80vw))}.io{grid-template-columns:1fr 1fr}.transport{grid-template-columns:repeat(4,1fr)}.transport button{padding:12px 6px}.status{justify-content:flex-start}header{grid-template-columns:1fr}}
   @media (max-width: 520px){.app{padding:8px;padding-bottom:168px}.machine{border-radius:18px}.mixer{display:flex;gap:12px}.track{min-width:calc(100vw - 34px)}.strip{grid-template-columns:36px 1fr 50px}.io{grid-template-columns:1fr}.transport{grid-template-columns:repeat(3,1fr);bottom:8px}.cass-body{height:155px}.reel{width:62px;height:62px}.master-controls{grid-template-columns:1fr}}
+
+  .mobile-quick{display:none}
+  .mobile-advanced-toggle{display:none}
+  @media (max-width: 700px), (pointer: coarse){
+    body.mobile-mode .sub{font-size:.78rem}
+    body.mobile-mode .mobile-quick{display:grid;gap:12px;margin:0 clamp(10px,2vw,18px) 14px;padding:14px;background:linear-gradient(180deg,#34312b,#25231f);border:1px solid var(--line);border-radius:18px;box-shadow:0 8px 20px rgba(0,0,0,.2)}
+    body.mobile-mode .mobile-title{display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--accent);font-weight:900;text-transform:uppercase;letter-spacing:.08em}
+    body.mobile-mode .mobile-track-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+    body.mobile-mode .mobile-track-tabs button, body.mobile-mode .mobile-grid button{min-height:48px;border-radius:14px;border:1px solid #5b5346;background:#181713;color:var(--ink);font-weight:800}
+    body.mobile-mode .mobile-track-tabs button.active, body.mobile-mode .mobile-grid button.active{background:#3a241c;border-color:var(--accent)}
+    body.mobile-mode .mobile-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    body.mobile-mode .mobile-grid .wide{grid-column:1/-1}
+    body.mobile-mode .mobile-note{color:var(--muted);font-size:.82rem;line-height:1.35}
+    body.mobile-mode .top{grid-template-columns:1fr;padding:12px 10px}
+    body.mobile-mode .cassette{min-height:auto;padding:12px}
+    body.mobile-mode .cass-body{height:118px}
+    body.mobile-mode .reel{top:56px;width:46px;height:46px;border-width:5px}
+    body.mobile-mode .label{height:30px;font-size:.8rem}
+    body.mobile-mode .window{top:70px}
+    body.mobile-mode .counter{align-items:flex-start}
+    body.mobile-mode .hint{display:none}
+    body.mobile-mode .master{padding:12px}
+    body.mobile-mode .meter-wrap{height:56px;margin:8px 0}.mobile-mode .meter{height:56px}
+    body.mobile-mode .setup, body.mobile-mode .io{display:none}
+    body.mobile-mode.show-advanced .setup, body.mobile-mode.show-advanced .io{display:grid}
+    body.mobile-mode .mobile-advanced-toggle{display:inline-block}
+    body.mobile-mode .mixer{display:flex;padding:0 10px 14px;gap:10px}
+    body.mobile-mode .track{min-width:calc(100vw - 28px);padding:12px}
+    body.mobile-mode .strip{grid-template-columns:34px 1fr;gap:10px}
+    body.mobile-mode .fader{display:none}
+    body.mobile-mode .vu{height:144px}
+    body.mobile-mode .row label{font-size:.68rem}
+    body.mobile-mode .track-buttons button{min-height:44px}
+    body.mobile-mode .transport{grid-template-columns:repeat(3,1fr);bottom:8px;width:calc(100% - 16px);gap:7px;padding:8px}
+    body.mobile-mode .transport button{min-height:50px;padding:8px 4px;font-size:.86rem}
+    body.mobile-mode .transport #rew, body.mobile-mode .transport #ff{display:none}
+    body.mobile-mode .app{padding:8px;padding-bottom:186px}
+  }
+
 </style>
 </head>
 <body>
@@ -61,7 +100,7 @@
             <div class="setup-title">Audio Setup / Latenzkompensation</div>
             <label class="checkrow"><input id="autoLatency" type="checkbox" checked> Auto</label>
             <div class="readout" id="latencyReadout">0.0 ms</div>
-            <div class="row"><label>Manual Offset (+ = früher / gegen zu späte Overdubs)</label><input id="latencyOffset" type="range" min="-500" max="500" step="0.1" value="0"></div>
+            <div class="row"><label>Manual Offset (+ = früher / schneidet Anfang weg)</label><input id="latencyOffset" type="range" min="-2000" max="2000" step="0.1" value="0"></div>
             <div class="readout" id="manualLatencyReadout">+0.0 ms</div>
             <button class="small-btn" id="calibrateLatency">Calibrate</button>
             <button class="small-btn" id="resetLatency">Reset</button>
@@ -70,6 +109,20 @@
           <div class="row wide"><label>Master Volume</label><input id="masterVol" type="range" min="0" max="1.2" step="0.01" value="0.9"></div>
         </div>
       </div>
+    </section>
+
+    <section class="mobile-quick" id="mobileQuick">
+      <div class="mobile-title"><span>Smartphone Auto Mode</span><button class="small-btn mobile-advanced-toggle" id="mobileAdvanced">Advanced</button></div>
+      <div class="mobile-track-tabs" id="mobileTrackTabs"></div>
+      <div class="mobile-grid">
+        <label class="row wide"><span style="font-size:.72rem;text-transform:uppercase;color:var(--muted);letter-spacing:.08em">Eingang für aktiven Track</span><select id="mobileInput" class="device-select"></select></label>
+        <button id="mobileArm">REC für Track</button>
+        <button id="mobileMonitor">Monitor</button>
+        <button id="mobileEarlier">Overdub früher</button>
+        <button id="mobileLater">Overdub später</button>
+        <button class="wide rec" id="mobileRec">3…2…1 REC</button>
+      </div>
+      <div class="mobile-note" id="mobileLatencyHelp">Nach einem Overdub: Wenn die neue Spur zu spät ist, tippe „Overdub früher“. Wenn sie zu früh ist, tippe „Overdub später“. Der Wert wird automatisch gespeichert.</div>
     </section>
     <section class="mixer" id="mixer"></section>
     <section class="io">
@@ -107,7 +160,7 @@ function renderMixer(){
 function bindUI(){
   document.body.addEventListener('input',e=>{ const d=e.target.dataset; if(d.gain!==undefined){tracks[d.gain].gain=+e.target.value; syncGains(d.gain); updateLiveMix(); autosaveSoon();} if(d.pan!==undefined){tracks[d.pan].pan=+e.target.value; updateLiveMix(); autosaveSoon();} if(d.name!==undefined){tracks[d.name].name=e.target.value; autosaveSoon();} });
   document.body.addEventListener('change',e=>{ const d=e.target.dataset; if(d.channel!==undefined){tracks[d.channel].inputChannel=+e.target.value; autosaveSoon();} });
-  document.body.addEventListener('click',e=>{ const d=e.target.dataset; if(d.arm!==undefined){tracks[d.arm].armed=!tracks[d.arm].armed; renderMixer(); autosaveSoon();} if(d.mute!==undefined){tracks[d.mute].mute=!tracks[d.mute].mute; renderMixer(); updateLiveMix(); autosaveSoon();} if(d.solo!==undefined){tracks[d.solo].solo=!tracks[d.solo].solo; renderMixer(); updateLiveMix(); autosaveSoon();} if(d.clear!==undefined){const t=tracks[d.clear]; try{t.src&&t.src.stop()}catch{} t.src=null; t.playGain=null; t.playPan=null; t.buffer=null; renderMixer(); updateLiveMix(); autosaveSoon();} });
+  document.body.addEventListener('click',e=>{ const d=e.target.dataset; if(d.arm!==undefined){tracks[d.arm].armed=!tracks[d.arm].armed; renderMixer(); updateMobileUI(); autosaveSoon();} if(d.mute!==undefined){tracks[d.mute].mute=!tracks[d.mute].mute; renderMixer(); updateMobileUI(); updateLiveMix(); autosaveSoon();} if(d.solo!==undefined){tracks[d.solo].solo=!tracks[d.solo].solo; renderMixer(); updateMobileUI(); updateLiveMix(); autosaveSoon();} if(d.clear!==undefined){const t=tracks[d.clear]; try{t.src&&t.src.stop()}catch{} t.src=null; t.playGain=null; t.playPan=null; t.buffer=null; renderMixer(); updateMobileUI(); updateLiveMix(); autosaveSoon();} });
   document.querySelectorAll('input[type=file]').forEach(inp=>inp.onchange=importAudio);
 }
 function syncGains(i){ document.querySelectorAll(`[data-gain="${i}"]`).forEach(x=>x.value=tracks[i].gain); }
@@ -166,7 +219,29 @@ function updateLatencyUI(){
   const sl=$('latencyOffset'); if(sl) sl.value=latencyManualMs;
   const cb=$('autoLatency'); if(cb) cb.checked=latencyAuto;
 }
-function compensatedStartPos(pos){ return pos - estimatedLatencyMs()/1000; }
+function copyBufferSlice(buf, startSample, lengthSamples){
+  const ch=buf.numberOfChannels, out=ctx.createBuffer(ch, Math.max(1,lengthSamples), buf.sampleRate);
+  for(let c=0;c<ch;c++){
+    const src=buf.getChannelData(c), dst=out.getChannelData(c);
+    const from=Math.max(0,startSample), to=Math.min(src.length, from+lengthSamples);
+    if(to>from) dst.set(src.subarray(from,to),0);
+  }
+  return out;
+}
+function applyLatencyCompensation(buf, compMs){
+  // Positiver Offset = Overdub früher: Encoder-/Interface-Versatz wird aus dem Anfang der Aufnahme herausgeschnitten.
+  // Das ist bei MediaRecorder zuverlässiger als nur den ganzen Clip früher einzusetzen.
+  const samples=Math.round((compMs/1000)*buf.sampleRate);
+  if(samples>0){
+    if(samples>=buf.length-1) return buf;
+    return copyBufferSlice(buf, samples, buf.length-samples);
+  }
+  return buf;
+}
+function compensatedInsertPos(pos, compMs){
+  // Negative Werte bedeuten bewusst später. Positive Werte werden durch Trimmen kompensiert und bleiben am Punch-In-Punkt.
+  return Math.max(0, pos + (compMs<0 ? Math.abs(compMs)/1000 : 0));
+}
 async function calibrateLatency(){
   await ensureMic(); await ensureAudio(); await ctx.resume();
   show('Kalibrierung startet: Verbinde kurz einen Ausgang deines Interfaces mit dem für Track 1 gewählten Eingang. Es wird ein kurzer Klick abgespielt und gemessen.');
@@ -194,7 +269,7 @@ async function calibrateLatency(){
   const measured=(idx/buf.sampleRate - clickDelay)*1000;
   if(measured < 0 || measured > 500){ show('Kalibrierung unplausibel: '+measured.toFixed(1)+' ms. Bitte Loopback prüfen oder Manual Offset benutzen.'); return; }
   calibratedLatencyMs=measured; latencyAuto=true; updateLatencyUI(); autosaveSoon();
-  show('Kalibrierung gespeichert: '+calibratedLatencyMs.toFixed(1)+' ms. Neue Overdubs werden entsprechend vorgezogen.');
+  show('Kalibrierung gespeichert: '+calibratedLatencyMs.toFixed(1)+' ms. Neue Overdubs werden entsprechend früher gesetzt bzw. am Anfang getrimmt.');
 }
 
 function nowPos(){ return playing? offset+(ctx.currentTime-startAt):offset; }
@@ -265,11 +340,12 @@ function makeTrackRecorder(t){
     const blob=new Blob(chunks,{type:opts.mimeType||'audio/webm'});
     if(!blob.size) return;
     const arr=await blob.arrayBuffer();
-    const newBuf=await ctx.decodeAudioData(arr);
-    const compPos=compensatedStartPos(startPos);
-    t.buffer=mergeAt(t.buffer,newBuf,compPos);
-    $('saveStatus').textContent='Overdub kompensiert: '+estimatedLatencyMs().toFixed(1)+' ms'; $('saveStatus').classList.add('on');
-    renderMixer(); autosaveSoon();
+    const rawBuf=await ctx.decodeAudioData(arr);
+    const compMs=estimatedLatencyMs();
+    const fixedBuf=applyLatencyCompensation(rawBuf, compMs);
+    t.buffer=mergeAt(t.buffer,fixedBuf,compensatedInsertPos(startPos, compMs));
+    $('latencyReadout').textContent += ' / angewendet: '+compMs.toFixed(1)+' ms';
+    renderMixer(); updateMobileUI(); autosaveSoon();
   };
   return mr;
 }
@@ -281,29 +357,12 @@ async function startRec(){
   armed.forEach(t=>{ try{ makeTrackRecorder(t).start(1000); }catch(e){ show('Aufnahme von Input '+((t.inputChannel||0)+1)+' konnte nicht gestartet werden: '+e.message); } });
 }
 function stopRec(){ recording=false; tracks.forEach(t=>{ if(t.mediaRecorder && t.mediaRecorder.state!=='inactive') t.mediaRecorder.stop(); t.mediaRecorder=null; }); setMode(playing?'PLAY':'STOP'); }
-function mergeAt(oldBuf,newBuf,pos){
-  const sr=ctx.sampleRate, ch=2;
-  // pos darf negativ sein. Das ist wichtig bei Overdubs ab 00:00:
-  // statt auf 0 zu clampen, wird der Anfang des neuen Buffers abgeschnitten.
-  const rawStart=Math.round(pos*sr);
-  const destStart=Math.max(0,rawStart);
-  const srcStart=Math.max(0,-rawStart);
-  const copyLen=Math.max(0,newBuf.length-srcStart);
-  const len=Math.max(oldBuf?oldBuf.length:0,destStart+copyLen);
-  const out=ctx.createBuffer(ch,Math.max(1,len),sr);
-  for(let c=0;c<ch;c++){
-    const od=out.getChannelData(c);
-    if(oldBuf) od.set(oldBuf.getChannelData(Math.min(c,oldBuf.numberOfChannels-1)));
-    const nd=newBuf.getChannelData(Math.min(c,newBuf.numberOfChannels-1));
-    for(let i=0;i<copyLen;i++) od[destStart+i]+=nd[srcStart+i];
-  }
-  return out;
-}
+function mergeAt(oldBuf,newBuf,pos){ const sr=ctx.sampleRate, ch=2, start=Math.floor(pos*sr), len=Math.max(oldBuf?oldBuf.length:0,start+newBuf.length); const out=ctx.createBuffer(ch,len,sr); for(let c=0;c<ch;c++){ const od=out.getChannelData(c); if(oldBuf) od.set(oldBuf.getChannelData(Math.min(c,oldBuf.numberOfChannels-1))); const nd=newBuf.getChannelData(Math.min(c,newBuf.numberOfChannels-1)); for(let i=0;i<nd.length;i++) od[start+i]+=nd[i]; } return out; }
 function rewind(){ offset=Math.max(0,nowPos()-5); if(playing){stop();play();} updateTime(); }
 function ff(){ offset=nowPos()+5; if(playing){stop();play();} updateTime(); }
 function updateTime(){ const p=nowPos(); const m=Math.floor(p/60), s=(p%60).toFixed(1).padStart(4,'0'); $('time').textContent=String(m).padStart(2,'0')+':'+s; }
 function meters(){ const data=new Uint8Array(128); const tick=()=>{ updateTime(); if(analyser){analyser.getByteFrequencyData(data); const avg=data.reduce((a,b)=>a+b,0)/data.length/255; $('masterL').style.height=$('masterR').style.height=Math.max(2,avg*100)+'%';} tracks.forEach((t,i)=>{ const v=(playing&&t.buffer&&!t.mute)?Math.min(1,(.08+Math.random()*.5)*t.gain):(recording&&t.armed?Math.min(1,.15+Math.random()*.35):0); const el=$('vu'+i); if(el) el.style.height=Math.max(2,v*100)+'%'; }); raf=requestAnimationFrame(tick);}; tick(); }
-async function importAudio(e){ await ensureAudio(); const i=+e.target.dataset.track; const arr=await e.target.files[0].arrayBuffer(); tracks[i].buffer=await ctx.decodeAudioData(arr); renderMixer(); autosaveSoon(); }
+async function importAudio(e){ await ensureAudio(); const i=+e.target.dataset.track; const arr=await e.target.files[0].arrayBuffer(); tracks[i].buffer=await ctx.decodeAudioData(arr); renderMixer(); updateMobileUI(); autosaveSoon(); }
 function drawWave(i){ const box=$('wave'+i), b=tracks[i].buffer; if(!box||!b) return; box.innerHTML='<canvas></canvas>'; const c=box.querySelector('canvas'), w=c.width=420,h=c.height=42, g=c.getContext('2d'), d=b.getChannelData(0), step=Math.ceil(d.length/w); g.clearRect(0,0,w,h); g.strokeStyle='#d87b32'; g.beginPath(); for(let x=0;x<w;x++){ let min=1,max=-1; for(let j=0;j<step;j++){const v=d[x*step+j]||0; if(v<min)min=v;if(v>max)max=v;} g.moveTo(x,(1+min)*h/2); g.lineTo(x,(1+max)*h/2);} g.stroke(); }
 async function exportMix(){ await ensureAudio(); const duration=Math.max(1,...tracks.map(t=>t.buffer?t.buffer.duration:0)); const sr=44100, off=new OfflineAudioContext(2,Math.ceil(duration*sr),sr); tracks.forEach(t=>{ if(!t.buffer||t.mute) return; const src=off.createBufferSource(); src.buffer=t.buffer; const g=off.createGain(); const p=off.createStereoPanner(); g.gain.value=t.gain; p.pan.value=t.pan; src.connect(g).connect(p).connect(off.destination); src.start(0); }); let rendered=await off.startRendering(); if(noise) rendered=renderTapeToBuffer(rendered); downloadBlob(bufferToWav(rendered),'portastudio-mix.wav'); }
 function renderTapeToBuffer(buffer){
@@ -324,13 +383,44 @@ async function save(){ await ensureAudio(); const data={selectedInputId,latencyM
 let saveTimer; function autosaveSoon(){ $('saveStatus').textContent='Änderungen...'; clearTimeout(saveTimer); saveTimer=setTimeout(save,900); }
 function blobToDataURL(blob){ return new Promise(r=>{const fr=new FileReader(); fr.onload=()=>r(fr.result); fr.readAsDataURL(blob);}); }
 async function load(){ const raw=localStorage.getItem(DB); if(!raw) return; await ensureAudio(); const data=JSON.parse(raw); if(data.selectedInputId) selectedInputId=data.selectedInputId; if(typeof data.latencyManualMs==='number') latencyManualMs=data.latencyManualMs; if(typeof data.latencyAuto==='boolean') latencyAuto=data.latencyAuto; if(typeof data.calibratedLatencyMs==='number') calibratedLatencyMs=data.calibratedLatencyMs; updateLatencyUI(); for(let i=0;i<N;i++){ if(!data.tracks?.[i]) continue; Object.assign(tracks[i],data.tracks[i]); if(tracks[i].inputChannel===undefined) tracks[i].inputChannel=i; if(data.tracks[i].wav){ const arr=await (await fetch(data.tracks[i].wav)).arrayBuffer(); tracks[i].buffer=await ctx.decodeAudioData(arr); } } renderMixer(); }
+
+let mobileTrack=0, mobileCountdown=null;
+function isMobileLike(){ return matchMedia('(max-width: 700px)').matches || matchMedia('(pointer: coarse)').matches; }
+function initMobileMode(){ document.body.classList.toggle('mobile-mode', isMobileLike()); window.addEventListener('resize',()=>document.body.classList.toggle('mobile-mode', isMobileLike())); updateMobileUI(); }
+function updateMobileUI(){
+  const tabs=$('mobileTrackTabs'); if(!tabs) return;
+  tabs.innerHTML=tracks.map((t,i)=>`<button data-mobile-track="${i}" class="${i===mobileTrack?'active':''}">T${i+1}</button>`).join('');
+  const inp=$('mobileInput'); if(inp){ inp.innerHTML=channelOptions(tracks[mobileTrack].inputChannel??mobileTrack); inp.value=tracks[mobileTrack].inputChannel??mobileTrack; }
+  const arm=$('mobileArm'); if(arm){ arm.textContent=(tracks[mobileTrack].armed?'REC an':'REC aus')+' · Track '+(mobileTrack+1); arm.classList.toggle('active', tracks[mobileTrack].armed); }
+  const mon=$('mobileMonitor'); if(mon){ mon.textContent=monitor?'Monitor an':'Monitor aus'; mon.classList.toggle('active', monitor); }
+  const help=$('mobileLatencyHelp'); if(help){ help.textContent='Overdub-Korrektur: '+(latencyManualMs>=0?'+':'')+latencyManualMs.toFixed(1)+' ms. Zu spät? „früher“. Zu früh? „später“.'; }
+}
+function mobileNudge(ms){ latencyManualMs=Math.max(-2000,Math.min(2000,latencyManualMs+ms)); latencyAuto=false; updateLatencyUI(); updateMobileUI(); autosaveSoon(); }
+function startMobileCountdown(){
+  if(recording){ stop(); updateTime(); return; }
+  let n=3; const b=$('mobileRec'); if(!b) return startRec();
+  b.textContent='REC in '+n; clearInterval(mobileCountdown);
+  mobileCountdown=setInterval(()=>{ n--; if(n>0){ b.textContent='REC in '+n; } else { clearInterval(mobileCountdown); b.textContent='● REC läuft'; startRec(); } }, 700);
+}
+document.body.addEventListener('click',e=>{
+  const d=e.target.dataset;
+  if(d.mobileTrack!==undefined){ mobileTrack=+d.mobileTrack; updateMobileUI(); document.querySelectorAll('.track')[mobileTrack]?.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'}); }
+});
+$('mobileInput')?.addEventListener('change',e=>{ tracks[mobileTrack].inputChannel=+e.target.value; renderMixer(); updateMobileUI(); autosaveSoon(); });
+$('mobileArm')?.addEventListener('click',()=>{ tracks[mobileTrack].armed=!tracks[mobileTrack].armed; renderMixer(); updateMobileUI(); autosaveSoon(); });
+$('mobileMonitor')?.addEventListener('click',async()=>{ $('monitorBtn').click(); setTimeout(updateMobileUI,100); });
+$('mobileEarlier')?.addEventListener('click',()=>mobileNudge(+10));
+$('mobileLater')?.addEventListener('click',()=>mobileNudge(-10));
+$('mobileRec')?.addEventListener('click',startMobileCountdown);
+$('mobileAdvanced')?.addEventListener('click',()=>{ document.body.classList.toggle('show-advanced'); $('mobileAdvanced').textContent=document.body.classList.contains('show-advanced')?'Advanced aus':'Advanced'; });
+
 $('play').onclick=play; $('stop').onclick=()=>{stop();updateTime();}; $('rec').onclick=startRec; $('rew').onclick=rewind; $('ff').onclick=ff; $('save').onclick=save; $('export').onclick=exportMix; $('refreshInputs').onclick=refreshInputDevices; $('latencyOffset').oninput=e=>{latencyManualMs=+e.target.value; updateLatencyUI(); autosaveSoon();}; $('autoLatency').onchange=e=>{latencyAuto=e.target.checked; updateLatencyUI(); autosaveSoon();}; $('resetLatency').onclick=()=>{latencyManualMs=0; calibratedLatencyMs=null; latencyAuto=true; updateLatencyUI(); autosaveSoon();}; $('calibrateLatency').onclick=()=>calibrateLatency().catch(e=>show('Kalibrierung fehlgeschlagen: '+e.message));
 $('inputDevice').onchange=()=>{ selectedInputId=$('inputDevice').value; const wasMonitor=monitor; if(monitor&&monitorGain){try{monitorGain.disconnect()}catch{}} closeMic(); if(wasMonitor){ ensureMic().then(()=>startMonitor()).catch(e=>show('Audiointerface konnte nicht geöffnet werden: '+e.message)); } autosaveSoon(); };
 function startMonitor(){ if(!micSplitter) return; monitorGain=ctx.createGain(); monitorGain.gain.value=.8; for(let c=0;c<8;c++){ try{ micSplitter.connect(monitorGain,c,0); }catch{} } monitorGain.connect(masterNode()); }
 function stopMonitor(){ if(monitorGain){ try{monitorGain.disconnect()}catch{} monitorGain=null; } }
 $('monitorBtn').onclick=async()=>{ await ensureMic(); monitor=!monitor; $('monitorBtn').classList.toggle('active',monitor); if(monitor) startMonitor(); else stopMonitor(); };
 $('noiseBtn').onclick=async()=>{await ensureAudio(); noise=!noise; $('noiseBtn').classList.toggle('active',noise); rebuildMasterChain(); autosaveSoon();};
-renderMixer(); bindUI(); refreshInputDevices().catch(()=>{}); if(navigator.mediaDevices) navigator.mediaDevices.ondevicechange=()=>refreshInputDevices().catch(()=>{}); load().catch(()=>{}); updateTime();
+renderMixer(); bindUI(); initMobileMode(); refreshInputDevices().catch(()=>{}); if(navigator.mediaDevices) navigator.mediaDevices.ondevicechange=()=>refreshInputDevices().catch(()=>{}); load().catch(()=>{}); updateTime();
 })();
 </script>
 </body>
